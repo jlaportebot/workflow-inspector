@@ -1,0 +1,204 @@
+"""GitHub API client for fetching workflow data."""
+
+import os
+from datetime import datetime
+from typing import Optional
+
+import httpx
+from rich.console import Console
+
+from .models import Job, Step, WorkflowFile, WorkflowRun
+
+console = Console()
+
+
+class GitHubClient:
+    """Client for interacting with GitHub REST API for Actions data."""
+
+    BASE_URL = "https://api.github.com"
+
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        timeout: float = 30.0,
+        max_retries: int = 3,
+    ):
+        self.token = token or os.environ.get("GITHUB_TOKEN")
+        if not self.token:
+            raise ValueError("GitHub token required. Set GITHUB_TOKEN env var or pass token parameter.")
+
+        self.headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        self.client = httpx.AsyncClient(
+            headers=self.headers,
+            timeout=timeout,
+            limits=httpx.Limits(max_connections=10),
+        )
+        self.max_retries = max_retries
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        await self.client.aclose()
+
+    async def _request(
+        self,
+        method: str,
+        path: str,
+        params: Optional[dict] = None,
+        json_data: Optional[dict] = None,
+    ) -> dict:
+        """Make an HTTP request with retry logic."""
+        url = f"{self.BASE_URL}{path}"
+
+        for attempt in range(self.max_retries):
+            try:
+                response = await self.client.request(
+                    method, url, params=params, json=json_data
+                )
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 403 and "rate limit" in e.response.text.lower():
+                    reset_time = int(e.response.headers.get("X-RateLimit-Reset", 0))
+                    wait_time = max(reset_time - int(datetime.now().timestamp()), 60)
+                    console.print(f"[yellow]Rate limited. Waiting {wait_time}s...[/yellow]")
+                    import asyncio
+                    await asyncio.sleep(wait_time)
+                    continue
+                if e.response.status_code >= 500 and attempt < self.max_retries - 1:
+                    import asyncio
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise
+            except httpx.RequestError:
+                if attempt < self.max_retries - 1:
+                    import asyncio
+                    await asyncio.sleep(2 ** attempt)
+                    continue
+                raise
+
+        raise RuntimeError(f"Failed after {self.max_retries} attempts")
+
+    async def get_workflow_runs(
+        self,
+        owner: str,
+        repo: str,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+        status: Optional[str] = None,
+        per_page: int = 100,
+        max_pages: int = 10,
+    ) -> list[WorkflowRun]:
+        """Fetch workflow runs for a repository."""
+        params = {
+            "per_page": min(per_page, 100),
+            "status": status or "",
+        }
+        if since:
+            params["created"] = f">{since.isoformat()}"
+        if until:
+            params["created"] = f"<{until.isoformat()}"
+
+        runs = []
+        page = 1
+
+        while page <= max_pages:
+            params["page"] = page
+            data = await self._request(
+                "GET", f"/repos/{owner}/{repo}/actions/runs", params=params
+            )
+
+            workflow_runs = data.get("workflow_runs", [])
+            if not workflow_runs:
+                break
+
+            for run_data in workflow_runs:
+                runs.append(WorkflowRun(**run_data))
+
+            if len(workflow_runs) < per_page:
+                break
+            page += 1
+
+        return runs
+
+    async def get_workflow_run_jobs(
+        self, owner: str, repo: str, run_id: int
+    ) -> list[Job]:
+        """Fetch jobs for a specific workflow run."""
+        data = await self._request(
+            "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
+        )
+
+        jobs = []
+        for job_data in data.get("jobs", []):
+            steps = []
+            for step_data in job_data.get("steps", []):
+                steps.append(Step(**step_data))
+
+            job_data["steps"] = steps
+            jobs.append(Job(**job_data))
+
+        return jobs
+
+    async def get_workflow_run_logs(
+        self, owner: str, repo: str, run_id: int
+    ) -> str:
+        """Fetch logs for a workflow run."""
+        # This would require downloading a zip file, skipping for now
+        return ""
+
+    async def get_workflows(
+        self, owner: str, repo: str
+    ) -> list[WorkflowFile]:
+        """Fetch workflow files from the repository."""
+        data = await self._request(
+            "GET", f"/repos/{owner}/{repo}/actions/workflows"
+        )
+
+        workflows = []
+        for wf_data in data.get("workflows", []):
+            # Fetch the actual workflow file content
+            try:
+                wf_file = await self.get_workflow_file(owner, repo, wf_data["path"])
+                workflows.append(wf_file)
+            except Exception:
+                # Skip workflows we can't fetch
+                continue
+
+        return workflows
+
+    async def get_workflow_file(
+        self, owner: str, repo: str, path: str
+    ) -> WorkflowFile:
+        """Fetch a single workflow file."""
+        import yaml
+
+        data = await self._request(
+            "GET", f"/repos/{owner}/{repo}/contents/{path}"
+        )
+
+        if data.get("encoding") == "base64":
+            import base64
+            content = base64.b64decode(data["content"]).decode("utf-8")
+            wf_dict = yaml.safe_load(content)
+            wf_dict["path"] = path
+            return WorkflowFile(**wf_dict)
+
+        raise ValueError(f"Unexpected encoding for workflow file: {data}")
+
+    async def get_repository(self, owner: str, repo: str) -> dict:
+        """Fetch repository metadata."""
+        return await self._request("GET", f"/repos/{owner}/{repo}")
+
+    async def get_workflow_run_timing(
+        self, owner: str, repo: str, run_id: int
+    ) -> dict:
+        """Fetch detailed timing for a workflow run."""
+        # This endpoint provides more detailed timing info
+        data = await self._request(
+            "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/timing"
+        )
+        return data
