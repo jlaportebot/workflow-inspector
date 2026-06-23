@@ -10,7 +10,7 @@ from .models import Job, PerformanceMetrics, WorkflowRun
 class PerformanceAnalyzer:
     """Analyze performance of GitHub Actions workflow runs."""
 
-    def __init__(self, client: GitHubClient):
+    def __init__(self, client: GitHubClient) -> None:
         self.client = client
 
     def analyze_run_performance(self, run: WorkflowRun, jobs: list[Job]) -> PerformanceMetrics:
@@ -43,7 +43,9 @@ class PerformanceAnalyzer:
             metrics.parallel_jobs = self._estimate_parallelism(job_durations)
 
         # Calculate execution time (total - queue)
-        metrics.execution_time_seconds = max(0, metrics.total_duration_seconds - metrics.queue_time_seconds)
+        metrics.execution_time_seconds = max(
+            0, metrics.total_duration_seconds - metrics.queue_time_seconds
+        )
 
         # Check for cache usage in steps
         metrics.cache_hit_rate, metrics.cache_size_mb = self._analyze_cache_usage(jobs)
@@ -126,13 +128,10 @@ class PerformanceAnalyzer:
             workflow_durations[run.name].append(metrics.total_duration_seconds)
 
         avg_durations = {
-            name: sum(durations) / len(durations)
-            for name, durations in workflow_durations.items()
+            name: sum(durations) / len(durations) for name, durations in workflow_durations.items()
         }
 
-        sorted_workflows = sorted(
-            avg_durations.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_workflows = sorted(avg_durations.items(), key=lambda x: x[1], reverse=True)
 
         return [
             {

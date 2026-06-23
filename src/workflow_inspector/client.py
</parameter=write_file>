@@ -16,7 +16,7 @@ console = Console()
 
 HTTP_403 = 403
 HTTP_500 = 500
-TOKEN_ERROR = "GitHub token required. Set GITHUB_TOKEN env var or pass token parameter."  # noqa: S105
+TOKEN_ERROR=*** token required. Set GITHUB_TOKEN env var or pass token parameter."  # noqa: S105
 RATE_LIMIT_ERROR = "Failed after {max_retries} attempts"
 
 
@@ -63,23 +63,33 @@ class GitHubClient:
 
         for attempt in range(self.max_retries):
             try:
-                response = await self.client.request(method, url, params=params, json=json_data)
+                response = await self.client.request(
+                    method, url, params=params, json=json_data
+                )
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as e:
-                if e.response.status_code == HTTP_403 and "rate limit" in e.response.text.lower():
+                if (
+                    e.response.status_code == HTTP_403
+                    and "rate limit" in e.response.text.lower()
+                ):
                     reset_time = int(e.response.headers.get("X-RateLimit-Reset", 0))
-                    wait_time = max(reset_time - int(datetime.now(UTC).timestamp()), 60)
+                    wait_time = max(
+                        reset_time - int(datetime.now(UTC).timestamp()), 60
+                    )
                     console.print(f"[yellow]Rate limited. Waiting {wait_time}s...[/yellow]")
                     await asyncio.sleep(wait_time)
                     continue
-                if e.response.status_code >= HTTP_500 and attempt < self.max_retries - 1:
-                    await asyncio.sleep(2**attempt)
+                if (
+                    e.response.status_code >= HTTP_500
+                    and attempt < self.max_retries - 1
+                ):
+                    await asyncio.sleep(2 ** attempt)
                     continue
                 raise
             except httpx.RequestError:
                 if attempt < self.max_retries - 1:
-                    await asyncio.sleep(2**attempt)
+                    await asyncio.sleep(2 ** attempt)
                     continue
                 raise
 
@@ -97,7 +107,7 @@ class GitHubClient:
     ) -> list[WorkflowRun]:
         """Fetch workflow runs for a repository."""
         params = {
-            "per_page": min(per_page, 10, 100),
+            "per_page": min(per_page, 100),
             "status": status or "",
         }
         if since:
@@ -110,7 +120,9 @@ class GitHubClient:
 
         while page <= max_pages:
             params["page"] = page
-            data = await self._request("GET", f"/repos/{owner}/{repo}/actions/runs", params=params)
+            data = await self._request(
+                "GET", f"/repos/{owner}/{repo}/actions/runs", params=params
+            )
 
             workflow_runs = data.get("workflow_runs", [])
             if not workflow_runs:
@@ -124,9 +136,13 @@ class GitHubClient:
 
         return runs
 
-    async def get_workflow_run_jobs(self, owner: str, repo: str, run_id: int) -> list[Job]:
-        """Fetch jobs for a specific workflow run."""
-        data = await self._request("GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/jobs")
+    async def get_workflow_run_jobs(
+        self, owner: str, repo: str, run_id: int
+    ) -> list[Job]:
+        """Fetch jobs for ack jobs for a specific workflow run."""
+        data = await self._request(
+            "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/jobs"
+        )
 
         jobs = []
         for job_data in data.get("jobs", []):
@@ -136,14 +152,20 @@ class GitHubClient:
 
         return jobs
 
-    async def get_workflow_run_logs(self, _owner: str, _repo: str, _run_id: int) -> str:
-        """Fetch logs for a workflow run."""
+    async def get_workflow_run_logs(
+        self, _owner: str, _repo: str, _run_id: int
+    ) -> str:
+        """Fetch logs for a workflow logs for a workflow run."""
         # This would require downloading a zip file, skipping for now
         return ""
 
-    async def get_workflows(self, owner: str, repo: str) -> list[WorkflowFile]:
+    async def get_workflows(
+        self, owner: str, repo: str
+    ) -> list[WorkflowFile]:
         """Fetch workflow files from the repository."""
-        data = await self._request("GET", f"/repos/{owner}/{repo}/actions/workflows")
+        data = await self._request(
+            "GET", f"/repos/{owner}/{repo}/actions/workflows"
+        )
 
         workflows = []
         for wf_data in data.get("workflows", []):
@@ -157,9 +179,13 @@ class GitHubClient:
 
         return workflows
 
-    async def get_workflow_file(self, owner: str, repo: str, path: str) -> WorkflowFile:
+    async def get_workflow_file(
+        self, owner: str, repo: str, path: str
+    ) -> WorkflowFile:
         """Fetch a single workflow file."""
-        data = await self._request("GET", f"/repos/{owner}/{repo}/contents/{path}")
+        data = await self._request(
+            "GET", f"/repos/{owner}/{repo}/contents/{path}"
+        )
 
         if data.get("encoding") == "base64":
             content = base64.b64decode(data["content"]).decode("utf-8")
@@ -174,7 +200,11 @@ class GitHubClient:
         """Fetch repository metadata."""
         return await self._request("GET", f"/repos/{owner}/{repo}")
 
-    async def get_workflow_run_timing(self, owner: str, repo: str, run_id: int) -> dict:
+    async def get_workflow_run_timing(
+        self, owner: str, repo: str, run_id: int
+    ) -> dict:
         """Fetch detailed timing for a workflow run."""
         # This endpoint provides more detailed timing info
-        return await self._request("GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/timing")
+        return await self._request(
+            "GET", f"/repos/{owner}/{repo}/actions/runs/{run_id}/timing"
+        )

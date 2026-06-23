@@ -1,14 +1,15 @@
 """Data models for GitHub Actions workflow analysis."""
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class WorkflowStatus(str, Enum):
+class WorkflowStatus(StrEnum):
     """GitHub Actions workflow run status."""
+
     QUEUED = "queued"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -16,8 +17,9 @@ class WorkflowStatus(str, Enum):
     PENDING = "pending"
 
 
-class WorkflowConclusion(str, Enum):
+class WorkflowConclusion(StrEnum):
     """GitHub Actions workflow run conclusion."""
+
     SUCCESS = "success"
     FAILURE = "failure"
     NEUTRAL = "neutral"
@@ -28,16 +30,18 @@ class WorkflowConclusion(str, Enum):
     STARTUP_FAILURE = "startup_failure"
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """GitHub Actions job status."""
+
     QUEUED = "queued"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     WAITING = "waiting"
 
 
-class JobConclusion(str, Enum):
+class JobConclusion(StrEnum):
     """GitHub Actions job conclusion."""
+
     SUCCESS = "success"
     FAILURE = "failure"
     NEUTRAL = "neutral"
@@ -46,8 +50,9 @@ class JobConclusion(str, Enum):
     TIMED_OUT = "timed_out"
 
 
-class StepConclusion(str, Enum):
+class StepConclusion(StrEnum):
     """GitHub Actions step conclusion."""
+
     SUCCESS = "success"
     FAILURE = "failure"
     SKIPPED = "skipped"
@@ -55,6 +60,7 @@ class StepConclusion(str, Enum):
 
 class WorkflowRun(BaseModel):
     """A GitHub Actions workflow run."""
+
     model_config = ConfigDict(extra="ignore")
 
     id: int
@@ -79,6 +85,7 @@ class WorkflowRun(BaseModel):
 
 class Job(BaseModel):
     """A GitHub Actions job within a workflow run."""
+
     model_config = ConfigDict(extra="ignore")
 
     id: int
@@ -98,6 +105,7 @@ class Job(BaseModel):
 
 class Step(BaseModel):
     """A step within a GitHub Actions job."""
+
     model_config = ConfigDict(extra="ignore")
 
     name: str
@@ -110,6 +118,7 @@ class Step(BaseModel):
 
 class WorkflowFile(BaseModel):
     """A workflow YAML file from the repository."""
+
     model_config = ConfigDict(extra="ignore")
 
     path: str
@@ -124,6 +133,7 @@ class WorkflowFile(BaseModel):
 
 class CostBreakdown(BaseModel):
     """Cost breakdown for a workflow run or period."""
+
     total_minutes: float = 0.0
     linux_minutes: float = 0.0
     windows_minutes: float = 0.0
@@ -161,18 +171,24 @@ class CostBreakdown(BaseModel):
             self.ubuntu_latest_minutes += minutes
             self.linux_minutes += minutes
 
-    def calculate_cost(self, linux_rate: float = 0.008, windows_rate: float = 0.016, macos_rate: float = 0.08) -> float:
+    def calculate_cost(
+        self,
+        linux_rate: float = 0.008,
+        windows_rate: float = 0.016,
+        macos_rate: float = 0.08,
+    ) -> float:
         """Calculate estimated cost in USD."""
         self.estimated_cost_usd = (
-            self.linux_minutes * linux_rate +
-            self.windows_minutes * windows_rate +
-            self.macos_minutes * macos_rate
+            self.linux_minutes * linux_rate
+            + self.windows_minutes * windows_rate
+            + self.macos_minutes * macos_rate
         )
         return self.estimated_cost_usd
 
 
 class PerformanceMetrics(BaseModel):
     """Performance metrics for a workflow run."""
+
     total_duration_seconds: float = 0.0
     queue_time_seconds: float = 0.0
     setup_time_seconds: float = 0.0
@@ -188,6 +204,7 @@ class PerformanceMetrics(BaseModel):
 
 class SecurityFinding(BaseModel):
     """A security finding in a workflow file."""
+
     severity: str  # "critical", "high", "medium", "low", "info"
     category: str  # "permissions", "pinning", "secrets", "injection", "supply_chain"
     title: str
@@ -200,6 +217,7 @@ class SecurityFinding(BaseModel):
 
 class OptimizationSuggestion(BaseModel):
     """An optimization suggestion for a workflow."""
+
     category: str  # "caching", "parallelism", "matrix", "runner", "dependencies", "structure"
     title: str
     description: str
@@ -212,6 +230,7 @@ class OptimizationSuggestion(BaseModel):
 
 class AnalysisReport(BaseModel):
     """Complete analysis report for a repository."""
+
     repository: str
     analyzed_at: datetime = Field(default_factory=datetime.now)
     period_days: int = 30
