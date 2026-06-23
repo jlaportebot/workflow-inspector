@@ -22,7 +22,6 @@ jobs:
       with:
         version: "latest"
         enable-cache: true
-        cache-dependency-glob: ""
 
     - name: Generate uv.lock
       run: uv lock

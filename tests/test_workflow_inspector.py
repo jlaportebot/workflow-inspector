@@ -1,28 +1,32 @@
 """Tests for Workflow Inspector."""
 
-import pytest
-from datetime import datetime, timezone
+import time
+from datetime import UTC, datetime, timezone
 
+import pytest
+from click.testing import CliRunner
+
+from workflow_inspector.cli import main
+from workflow_inspector.cost import CostAnalyzer
 from workflow_inspector.models import (
-    WorkflowRun,
-    Job,
-    Step,
-    WorkflowFile,
+    AnalysisReport,
     CostBreakdown,
+    Job,
+    JobConclusion,
+    JobStatus,
+    OptimizationSuggestion,
     PerformanceMetrics,
     SecurityFinding,
-    OptimizationSuggestion,
-    AnalysisReport,
-    WorkflowStatus,
-    WorkflowConclusion,
-    JobStatus,
-    JobConclusion,
+    Step,
     StepConclusion,
+    WorkflowConclusion,
+    WorkflowFile,
+    WorkflowRun,
+    WorkflowStatus,
 )
-from workflow_inspector.cost import CostAnalyzer
+from workflow_inspector.optimization import OptimizationAnalyzer
 from workflow_inspector.performance import PerformanceAnalyzer
 from workflow_inspector.security import SecurityAnalyzer
-from workflow_inspector.optimization import OptimizationAnalyzer
 
 
 class TestModels:
@@ -41,9 +45,9 @@ class TestModels:
             workflow_id=456,
             url="https://api.github.com/repos/owner/repo/actions/runs/123",
             html_url="https://github.com/owner/repo/actions/runs/123",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            run_started_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            run_started_at=datetime.now(UTC),
             run_duration_ms=60000,
             repository_id=789,
         )
@@ -95,7 +99,7 @@ class TestCostAnalyzer:
     """Test cost analysis."""
 
     def test_analyze_run_cost(self) -> None:
-        analyzer = CostAnalyzer(None)  # type: ignore
+        analyzer = CostAnalyzer(None)  # type: ignore[arg-type]
 
         run = WorkflowRun(
             id=1,
@@ -109,17 +113,16 @@ class TestCostAnalyzer:
             workflow_id=1,
             url="",
             html_url="",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            run_started_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            run_started_at=datetime.now(UTC),
             run_duration_ms=120000,
             repository_id=1,
         )
 
-        started = datetime.now(timezone.utc)
-        completed = datetime.now(timezone.utc)
+        started = datetime.now(UTC)
+        completed = datetime.now(UTC)
         # Ensure some duration
-        import time
         time.sleep(0.01)
 
         job = Job(
@@ -143,7 +146,7 @@ class TestPerformanceAnalyzer:
     """Test performance analysis."""
 
     def test_analyze_run_performance(self) -> None:
-        analyzer = PerformanceAnalyzer(None)  # type: ignore
+        analyzer = PerformanceAnalyzer(None)  # type: ignore[arg-type]
 
         run = WorkflowRun(
             id=1,
@@ -157,9 +160,9 @@ class TestPerformanceAnalyzer:
             workflow_id=1,
             url="",
             html_url="",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-            run_started_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+            run_started_at=datetime.now(UTC),
             run_duration_ms=120000,
             repository_id=1,
         )
@@ -171,8 +174,8 @@ class TestPerformanceAnalyzer:
             name="build",
             status=JobStatus.COMPLETED,
             conclusion=JobConclusion.SUCCESS,
-            started_at=datetime.now(timezone.utc),
-            completed_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
         )
 
         metrics = analyzer.analyze_run_performance(run, [job])
@@ -191,7 +194,11 @@ class TestSecurityAnalyzer:
             jobs={
                 "build": {
                     "steps": [
-                        {"name": "Deploy", "run": "echo $API_KEY", "env": {"API_KEY": "sk-1234567890abcdef1234"}}
+                        {
+                            "name": "Deploy",
+                            "run": "echo $API_KEY",
+                            "env": {"API_KEY": "sk-123...1234"},
+                        }
                     ]
                 }
             },
@@ -239,7 +246,7 @@ class TestOptimizationAnalyzer:
         )
 
         suggestions = analyzer.analyze_workflow(workflow, ".github/workflows/ci.yml")
-        cache_suggestions = [s for s in suggestions if s.category == "caching" or s.category == "dependencies"]
+        cache_suggestions = [s for s in suggestions if s.category in {"caching", "dependencies"}]
         assert len(cache_suggestions) > 0
 
     def test_suggest_concurrency(self) -> None:
@@ -247,14 +254,14 @@ class TestOptimizationAnalyzer:
 
         workflow = WorkflowFile(
             path=".github/workflows/ci.yml",
-            jobs={
-                "build": {"steps": []}
-            },
+            jobs={"build": {"steps": []}},
         )
 
         suggestions = analyzer.analyze_workflow(workflow, ".github/workflows/ci.yml")
         structure_suggestions = [s for s in suggestions if s.category == "structure"]
-        concurrency_suggestions = [s for s in structure_suggestions if "concurrency" in s.title.lower()]
+        concurrency_suggestions = [
+            s for s in structure_suggestions if "concurrency" in s.title.lower()
+        ]
         assert len(concurrency_suggestions) > 0
 
 
@@ -262,9 +269,6 @@ class TestCLI:
     """Test CLI."""
 
     def test_cli_help(self) -> None:
-        from click.testing import CliRunner
-        from workflow_inspector.cli import main
-
         runner = CliRunner()
         result = runner.invoke(main, ["--help"])
         assert result.exit_code == 0

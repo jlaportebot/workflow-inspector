@@ -1,5 +1,6 @@
 """Cost analysis for GitHub Actions workflows."""
 
+from typing import ClassVar
 
 from .client import GitHubClient
 from .models import CostBreakdown, Job, WorkflowRun
@@ -9,12 +10,12 @@ class CostAnalyzer:
     """Analyze costs of GitHub Actions workflow runs."""
 
     # GitHub hosted runner rates (USD per minute) as of 2024
-    LINUX_RATE = 0.008      # $0.008/min for Linux
-    WINDOWS_RATE = 0.016    # $0.016/min for Windows
-    MACOS_RATE = 0.08       # $0.08/min for macOS
+    LINUX_RATE = 0.008  # $0.008/min for Linux
+    WINDOWS_RATE = 0.016  # $0.016/min for Windows
+    MACOS_RATE = 0.08  # $0.08/min for macOS
 
     # Runner label to rate mapping
-    RUNNER_RATES = {
+    RUNNER_RATES: ClassVar[dict[str, float]] = {
         "ubuntu-latest": LINUX_RATE,
         "ubuntu-24.04": LINUX_RATE,
         "ubuntu-22.04": LINUX_RATE,
@@ -31,7 +32,7 @@ class CostAnalyzer:
         "macos-12": MACOS_RATE,
     }
 
-    def __init__(self, client: GitHubClient):
+    def __init__(self, client: GitHubClient) -> None:
         self.client = client
 
     def analyze_run_cost(self, run: WorkflowRun, jobs: list[Job]) -> CostBreakdown:
@@ -39,7 +40,6 @@ class CostAnalyzer:
         breakdown = CostBreakdown()
 
         if run.run_duration_ms:
-            total_minutes = run.run_duration_ms / 60000.0
             # We don't know the runner from the run alone, use jobs
             for job in jobs:
                 job_minutes = self._get_job_minutes(job)
@@ -109,9 +109,7 @@ class CostAnalyzer:
             workflow_costs[name] = workflow_costs.get(name, 0.0) + breakdown.estimated_cost_usd
             workflow_counts[name] = workflow_counts.get(name, 0) + 1
 
-        sorted_workflows = sorted(
-            workflow_costs.items(), key=lambda x: x[1], reverse=True
-        )
+        sorted_workflows = sorted(workflow_costs.items(), key=lambda x: x[1], reverse=True)
 
         return [
             {
