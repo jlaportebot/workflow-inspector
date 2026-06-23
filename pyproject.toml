@@ -86,10 +86,12 @@ markers = [
 
 [tool.ty]
 # Strict from day 1
-error-on-warning = true
 
 [tool.ty.environment]
 python-version = "3.11"
+
+[tool.ty.terminal]
+error-on-warning = true
 
 [tool.ty.rules]
 possibly-unresolved-reference = "error"
